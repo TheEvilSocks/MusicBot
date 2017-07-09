@@ -1340,6 +1340,7 @@ class MusicBot(discord.Client):
 
         if player.is_playing:
             player.pause()
+            return Response(':pause_button:', delete_after=20)
 
         else:
             raise exceptions.CommandError('Player is not playing.', expire_in=30)
@@ -1354,6 +1355,7 @@ class MusicBot(discord.Client):
 
         if player.is_paused:
             player.resume()
+            return Response(':arrow_forward:', delete_after=20)
 
         else:
             raise exceptions.CommandError('Player is not paused.', expire_in=30)
