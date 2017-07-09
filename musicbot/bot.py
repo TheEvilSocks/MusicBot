@@ -737,7 +737,7 @@ class MusicBot(discord.Client):
                     "```\n{}```".format(
                         dedent(cmd.__doc__),
                         command_prefix=self.config.command_prefix
-                    ),
+                    ).replace("{command_prefix}", self.config.command_prefix),
                     delete_after=60
                 )
             else:
@@ -1128,6 +1128,91 @@ class MusicBot(discord.Client):
         return Response("Enqueued {} songs to be played in {} seconds".format(
             songs_added, self._fixg(ttime, 1)), delete_after=30)
 
+    async def cmd_add(self, song_url):
+        """
+        Usage:
+            {command_prefix}add song_link
+        Add song to the autoplaylist.
+        """
+        song_url = song_url.strip('<>')
+        self.autoplaylist.append(song_url)
+        f = open(self.config.auto_playlist_file, 'a')
+        f.write(song_url+"\n");
+        f.close()
+        return Response('Added song to autoplaylist.', delete_after=30)
+
+    async def cmd_remove(self, player, channel, author, permissions, index):
+        """
+        Usage:
+            {command_prefix}remove <index>
+         Remove a song at the given index from the queue. 
+        Use {command_prefix}queue to see the list of queued songs and their indices.
+        """
+        try:
+            if permissions.movesong or author.id == self.config.owner_id or author == player.playlist.entires[index].meta.get('author', None):
+                index = int(index) + 1
+                playlist_size = len(player.playlist.entries)
+                if index > playlist_size:
+                    if(playlist_size > 1):
+                        reply_text = "There are only %s songs in the queue, dumbass!"
+                        reply_text %= (playlist_size)
+                        return Response(reply_text, delete_after=30)
+                    elif(playlist_size == 1):
+                        reply_text = "There is only %s song in the queue, dumbass!"
+                        reply_text %= (playlist_size)
+                        return Response(reply_text, delete_after=30)
+                    else:
+                        reply_text = "There aren't any songs in the queue, dumbass!"
+                        return Response(reply_text, delete_after=30)
+                entry = player.playlist.entries[index]
+                player.playlist.entries.remove(player.playlist.entries[index])
+                reply_text = "Removed **%s** from the playlist."
+                reply_text %= (entry.title)
+                return Response(reply_text, delete_after=30)
+            else:
+                return Response("```You do not have the permissions to use {command_prefix}remove\nCheck {command_prefix}perms for more information.```", delete_after=30)
+        except ValueError:
+            reply_text = "Must specify an index to remove (AKA a number)"
+            return Response(reply_text, delete_after=30)
+
+    async def cmd_move(self, player, channel, author, permissions, index_from, index_to):
+        """
+        Usage:
+            {command_prefix}move <index_from> <index_to>
+        Moves a queued song from place <index_from> to place <index_to>
+        Use {command_prefix}queue to see the list of queued songs and their indices.
+        """
+        try:
+            if permissions.movesong or author.id == self.config.owner_id:
+                index_from = int(index_from)-1
+                index_to = int(index_to)-1
+                playlist_size = len(player.playlist.entries)
+                if index_from > playlist_size or index_to > playlist_size:
+                    if(playlist_size > 1):
+                        reply_text = "There are only %s songs in the queue, dumbass!"
+                        reply_text %= (playlist_size)
+                        return Response(reply_text, delete_after=30)
+                    elif(playlist_size == 1):
+                        reply_text = "There is only %s song in the queue, dumbass!"
+                        reply_text %= (playlist_size)
+                        return Response(reply_text, delete_after=30)
+                    else:
+                        reply_text = "There aren't any songs in the queue, dumbass!"
+                        return Response(reply_text, delete_after=30)
+                entry = player.playlist.entries[index_from]
+                if index_to < index_from:
+                    player.playlist.entries.remove(player.playlist.entries[index_from])
+                else:
+                    player.playlist.entries.remove(player.playlist.entries[index_from])
+                player.playlist.insert(index_to, entry)
+                reply_text = "Moved **%s** to spot **%s** from the playlist." % (entry.title, (index_to+1))
+                return Response(reply_text, delete_after=30)
+            else:
+                return Response("```You do not have the permissions to use {command_prefix}move\nCheck {command_prefix}perms for more information.```", delete_after=30)
+        except ValueError:
+            reply_text = "Must specify an index to move (AKA a number)"
+            return Response(reply_text, delete_after=30)
+
     async def cmd_search(self, player, channel, author, permissions, leftover_args):
         """
         Usage:
@@ -1276,10 +1361,10 @@ class MusicBot(discord.Client):
             prog_str = '`[%s/%s]`' % (song_progress, song_total)
 
             if player.current_entry.meta.get('channel', False) and player.current_entry.meta.get('author', False):
-                np_text = "Now Playing: **%s** added by **%s** %s\n" % (
-                    player.current_entry.title, player.current_entry.meta['author'].name, prog_str)
+                np_text = "Now Playing: **%s** added by **%s** %s\n:point_right: **<%s>**" % (
+                    player.current_entry.title, player.current_entry.meta['author'].name, prog_str, player.current_entry.url)
             else:
-                np_text = "Now Playing: **%s** %s\n" % (player.current_entry.title, prog_str)
+                np_text = "Now Playing: **%s** %s\n:point_right: **<%s>**" % (player.current_entry.title, prog_str, player.current_entry.url)
 
             self.server_specific_data[server]['last_np_msg'] = await self.safe_send_message(channel, np_text)
             await self._manual_delete_check(message)

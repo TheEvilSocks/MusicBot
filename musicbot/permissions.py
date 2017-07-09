@@ -21,6 +21,11 @@ class PermissionsDefaults:
     AllowPlaylists = True
     InstaSkip = False
 
+    AddAutoPlaylist = False
+    MoveSong = False
+    RemoveSong = False
+
+
 
 class Permissions:
     def __init__(self, config_file, grant_all=None):
@@ -101,6 +106,11 @@ class PermissionGroup:
 
         self.allow_playlists = section_data.get('AllowPlaylists', fallback=PermissionsDefaults.AllowPlaylists)
         self.instaskip = section_data.get('InstaSkip', fallback=PermissionsDefaults.InstaSkip)
+
+        self.add_autoplay = section_data.get('AddAutoPlaylist', fallback=PermissionsDefaults.AddAutoPlaylist)
+        self.movesong = section_data.get('MoveSong', fallback=PermissionsDefaults.MoveSong)
+        self.removesong = section_data.get('RemoveSong', fallback=PermissionsDefaults.RemoveSong)
+
 
         self.validate()
 
