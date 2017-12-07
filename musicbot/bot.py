@@ -8,6 +8,7 @@ import aiohttp
 import discord
 import asyncio
 import traceback
+import math
 
 from discord import utils
 from discord.object import Object
@@ -23,7 +24,7 @@ from random import choice, shuffle
 from collections import defaultdict
 
 from musicbot.playlist import Playlist
-from musicbot.player import MusicPlayer
+from musicbot.player import MusicPlayer, MusicPlayerState
 from musicbot.config import Config, ConfigDefaults
 from musicbot.permissions import Permissions, PermissionsDefaults
 from musicbot.utils import load_file, write_file, sane_round_int
@@ -393,11 +394,12 @@ class MusicBot(discord.Client):
                     break  # This is probably redundant
 
             if self.config.now_playing_mentions:
-                newmsg = '%s - your song **%s** is now playing in %s!' % (
-                    entry.meta['author'].mention, entry.title, player.voice_client.channel.name)
+                newmsg = '%s - your song **%s** is now playing in %s!\n:point_right: **<%s>**' % (
+                    entry.meta['author'].mention, entry.title, player.voice_client.channel.name, player.current_entry.url)
             else:
-                newmsg = 'Now playing in %s: **%s**' % (
-                    player.voice_client.channel.name, entry.title)
+                newmsg = 'Now playing in %s: **%s**\n:point_right: **<%s>**' % (
+                    player.voice_client.channel.name, entry.title, player.current_entry.url)
+
 
             if self.server_specific_data[channel.server]['last_np_msg']:
                 self.server_specific_data[channel.server]['last_np_msg'] = await self.safe_edit_message(last_np_msg, newmsg, send_if_fail=True)
@@ -1128,18 +1130,43 @@ class MusicBot(discord.Client):
         return Response("Enqueued {} songs to be played in {} seconds".format(
             songs_added, self._fixg(ttime, 1)), delete_after=30)
 
-    async def cmd_add(self, song_url):
+    async def cmd_apadd(self, player, channel, author, permissions, song_url):
         """
         Usage:
-            {command_prefix}add song_link
+            {command_prefix}apadd song_link
         Add song to the autoplaylist.
         """
-        song_url = song_url.strip('<>')
-        self.autoplaylist.append(song_url)
-        f = open(self.config.auto_playlist_file, 'a')
-        f.write(song_url+"\n");
-        f.close()
-        return Response('Added song to autoplaylist.', delete_after=30)
+        if permissions.add_autoplay or author.id == self.config.owner_id:
+            song_url = song_url.strip('<>')
+            if song_url in self.autoplaylist:
+                self.autoplaylist.append(song_url)
+                f = open(self.config.auto_playlist_file, 'a')
+                f.write(song_url+"\n");
+                f.close()
+                return Response('Added song to autoplaylist.', delete_after=30)
+            else:
+                return Response('That song is already in the autoplaylist, dumbass', delete_after=30)
+        else:
+            return Response("```You do not have the permissions to use {command_prefix}apadd\nCheck {command_prefix}perms for more information.```", delete_after=30)
+
+    
+    async def cmd_apremove(self, player, channel, author, permissions, song_url):
+        """
+        Usage:
+            {command_prefix}apremove song_link
+        Remove song from the autoplaylist.
+        """
+        if permissions.rem_autoplay or author.id == self.config.owner_id:
+            song_url = song_url.strip('<>')
+            if song_url in self.autoplaylist:
+                self.autoplaylist.remove(song_url)
+                write_file(self.config.auto_playlist_file, self.autoplaylist)
+                return Response('Removed song from autoplaylist.', delete_after=30)
+            else:
+                return Response('That song is not in the autoplaylist, dumbass', delete_after=30)
+        else:
+            return Response("```You do not have the permissions to use {command_prefix}apremove\nCheck {command_prefix}perms for more information.```", delete_after=30)
+    
 
     async def cmd_remove(self, player, channel, author, permissions, index):
         """
@@ -1150,7 +1177,7 @@ class MusicBot(discord.Client):
         """
         try:
             if permissions.movesong or author.id == self.config.owner_id or author == player.playlist.entires[index].meta.get('author', None):
-                index = int(index) + 1
+                index = int(index) - 1
                 playlist_size = len(player.playlist.entries)
                 if index > playlist_size:
                     if(playlist_size > 1):
@@ -1360,14 +1387,24 @@ class MusicBot(discord.Client):
             song_total = str(timedelta(seconds=player.current_entry.duration)).lstrip('0').lstrip(':')
             prog_str = '`[%s/%s]`' % (song_progress, song_total)
 
-            if player.current_entry.meta.get('channel', False) and player.current_entry.meta.get('author', False):
-                np_text = "Now Playing: **%s** added by **%s** %s\n:point_right: **<%s>**" % (
-                    player.current_entry.title, player.current_entry.meta['author'].name, prog_str, player.current_entry.url)
+            prog_bar = ''
+            percentage = player.progress / player.current_entry.duration
+            if player.state == MusicPlayerState.PAUSED:
+                prog_bar += ":pause_button: "
             else:
-                np_text = "Now Playing: **%s** %s\n:point_right: **<%s>**" % (player.current_entry.title, prog_str, player.current_entry.url)
+                if player.state == MusicPlayerState.PLAYING:
+                    prog_bar += ":arrow_forward: "
+
+            prog_bar += ("─" * math.floor(percentage*18)) + ":radio_button:" + ("─" * math.floor((1-percentage)*18))
+
+            if player.current_entry.meta.get('channel', False) and player.current_entry.meta.get('author', False):
+                np_text = "Now Playing: **%s** added by **%s**\n%s %s\n:point_right: **<%s>**" % (
+                    player.current_entry.title, player.current_entry.meta['author'].name, prog_bar, prog_str, player.current_entry.url)
+            else:
+                np_text = "Now Playing: **%s**\n%s %s\n:point_right: **<%s>**" % (player.current_entry.title, prog_bar, prog_str, player.current_entry.url)
 
             self.server_specific_data[server]['last_np_msg'] = await self.safe_send_message(channel, np_text)
-            await self._manual_delete_check(message)
+            #await self._manual_delete_check(message)
         else:
             return Response(
                 'There are no songs queued! Queue something with {}play.'.format(self.config.command_prefix),
@@ -1425,7 +1462,7 @@ class MusicBot(discord.Client):
 
         if player.is_playing:
             player.pause()
-            return Response(':pause_button:', delete_after=20)
+            return Response(':pause_button: Paused %s' % player.current_entry.title, delete_after=20)
 
         else:
             raise exceptions.CommandError('Player is not playing.', expire_in=30)
@@ -1440,7 +1477,7 @@ class MusicBot(discord.Client):
 
         if player.is_paused:
             player.resume()
-            return Response(':arrow_forward:', delete_after=20)
+            return Response(':arrow_forward: Resuming %s' % player.current_entry.title, delete_after=20)
 
         else:
             raise exceptions.CommandError('Player is not paused.', expire_in=30)
@@ -1576,7 +1613,7 @@ class MusicBot(discord.Client):
 
         old_volume = int(player.volume * 100)
 
-        if 0 < new_volume <= 100:
+        if 0 < new_volume:
             player.volume = new_volume / 100.0
 
             return Response('updated volume from %d to %d' % (old_volume, new_volume), reply=True, delete_after=20)

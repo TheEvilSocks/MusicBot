@@ -22,6 +22,7 @@ class PermissionsDefaults:
     InstaSkip = False
 
     AddAutoPlaylist = False
+    RemoveAutoPlaylist = False
     MoveSong = False
     RemoveSong = False
 
@@ -108,6 +109,8 @@ class PermissionGroup:
         self.instaskip = section_data.get('InstaSkip', fallback=PermissionsDefaults.InstaSkip)
 
         self.add_autoplay = section_data.get('AddAutoPlaylist', fallback=PermissionsDefaults.AddAutoPlaylist)
+        self.rem_autoplay = section_data.get('RemoveAutoPlaylist', fallback=PermissionsDefaults.RemoveAutoPlaylist)
+
         self.movesong = section_data.get('MoveSong', fallback=PermissionsDefaults.MoveSong)
         self.removesong = section_data.get('RemoveSong', fallback=PermissionsDefaults.RemoveSong)
 
